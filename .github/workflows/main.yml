@@ -1,0 +1,72 @@
+name: Build TWRP - Lenovo PB-6505M
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout device tree
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
+            git gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev \
+            liblz4-tool libncurses5 libncurses5-dev libssl-dev \
+            libxml2-utils lzop openjdk-8-jdk pngcrush rsync \
+            schedtool squashfs-tools xsltproc zip zlib1g-dev python2
+
+      - name: Install repo
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo \
+            -o "$HOME/bin/repo"
+          chmod +x "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Initialize TWRP source
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/twrp"
+          cd "$GITHUB_WORKSPACE/twrp"
+          repo init --depth=1 \
+            -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_omni.git \
+            -b twrp-9.0
+
+      - name: Sync TWRP source
+        run: |
+          cd "$GITHUB_WORKSPACE/twrp"
+          repo sync -c --force-sync --no-clone-bundle --no-tags -j2
+
+      - name: Copy PB-6505M device tree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/twrp/device/lenovo/PB6505M"
+          cp -a "$GITHUB_WORKSPACE/." \
+            "$GITHUB_WORKSPACE/twrp/device/lenovo/PB6505M/"
+
+      - name: Build TWRP
+        run: |
+          cd "$GITHUB_WORKSPACE/twrp"
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export USE_CCACHE=1
+          export PATH="/usr/lib/jvm/java-8-openjdk-amd64/bin:$PATH"
+          export PYTHON=python2
+          source build/envsetup.sh
+          lunch omni_PB6505M-eng
+          mka recoveryimage -j2
+
+      - name: Check recovery image
+        run: |
+          test -s "$GITHUB_WORKSPACE/twrp/out/target/product/PB6505M/recovery.img"
+          ls -lh "$GITHUB_WORKSPACE/twrp/out/target/product/PB6505M/recovery.img"
+
+      - name: Upload recovery.img
+        uses: actions/upload-artifact@v4
+        with:
+          name: PB6505M-TWRP-recovery
+          path: twrp/out/target/product/PB6505M/recovery.img
+          if-no-files-found: error
