@@ -33,6 +33,7 @@ jobs:
         run: |
           mkdir -p "$GITHUB_WORKSPACE/twrp"
           cd "$GITHUB_WORKSPACE/twrp"
+
           repo init --depth=1 \
             -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_omni.git \
             -b twrp-9.0
@@ -40,11 +41,17 @@ jobs:
       - name: Sync TWRP source
         run: |
           cd "$GITHUB_WORKSPACE/twrp"
-          repo sync -c --force-sync --no-clone-bundle --no-tags -j2
+
+          repo sync -c \
+            --force-sync \
+            --no-clone-bundle \
+            --no-tags \
+            -j2
 
       - name: Copy PB-6505M device tree
         run: |
           mkdir -p "$GITHUB_WORKSPACE/twrp/device/lenovo/PB6505M"
+
           rsync -a \
             --exclude='twrp/' \
             --exclude='.git/' \
@@ -52,21 +59,73 @@ jobs:
             "$GITHUB_WORKSPACE/" \
             "$GITHUB_WORKSPACE/twrp/device/lenovo/PB6505M/"
 
+          echo "Device tree contents:"
+          ls -la "$GITHUB_WORKSPACE/twrp/device/lenovo/PB6505M"
+
+      - name: Configure Python 2
+        run: |
+          mkdir -p "$HOME/bin"
+
+          if command -v python2 >/dev/null 2>&1; then
+            ln -sf "$(command -v python2)" "$HOME/bin/python"
+            ln -sf "$(command -v python2)" "$HOME/bin/python2"
+          else
+            echo "Python 2 is not available"
+            exit 1
+          fi
+
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+          "$HOME/bin/python" --version
+          python2 --version
+
       - name: Build TWRP
+        shell: bash
         run: |
           cd "$GITHUB_WORKSPACE/twrp"
+
           export ALLOW_MISSING_DEPENDENCIES=true
           export USE_CCACHE=1
-          export PATH="/usr/lib/jvm/java-8-openjdk-amd64/bin:$PATH"
+          export CCACHE_EXEC=/usr/bin/ccache
           export PYTHON=python2
+          export PYTHON2=python2
+          export PATH="$HOME/bin:/usr/lib/jvm/java-8-openjdk-amd64/bin:$PATH"
+
+          echo "Python:"
+          python --version
+          python2 --version
+
+          echo "Java:"
+          java -version
+
+          echo "Initializing Android build environment..."
           source build/envsetup.sh
+
+          echo "Selecting PB-6505M target..."
           lunch omni_PB6505M-eng
+
+          echo "Starting TWRP recovery build..."
           mka recoveryimage -j2
 
       - name: Check recovery image
+        shell: bash
         run: |
-          test -s "$GITHUB_WORKSPACE/twrp/out/target/product/PB6505M/recovery.img"
-          ls -lh "$GITHUB_WORKSPACE/twrp/out/target/product/PB6505M/recovery.img"
+          RECOVERY="$GITHUB_WORKSPACE/twrp/out/target/product/PB6505M/recovery.img"
+
+          if [ ! -f "$RECOVERY" ]; then
+            echo "ERROR: recovery.img was not created."
+            exit 1
+          fi
+
+          if [ ! -s "$RECOVERY" ]; then
+            echo "ERROR: recovery.img is empty."
+            exit 1
+          fi
+
+          echo "TWRP recovery successfully built:"
+          ls -lh "$RECOVERY"
+
+          file "$RECOVERY"
 
       - name: Upload recovery.img
         uses: actions/upload-artifact@v4
