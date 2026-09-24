@@ -42,10 +42,14 @@ jobs:
           cd "$GITHUB_WORKSPACE/twrp"
           repo sync -c --force-sync --no-clone-bundle --no-tags -j2
 
-      - name: Copy PB-6505M device tree
+            - name: Copy PB-6505M device tree
         run: |
           mkdir -p "$GITHUB_WORKSPACE/twrp/device/lenovo/PB6505M"
-          cp -a "$GITHUB_WORKSPACE/." \
+          rsync -a \
+            --exclude='twrp/' \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            "$GITHUB_WORKSPACE/" \
             "$GITHUB_WORKSPACE/twrp/device/lenovo/PB6505M/"
 
       - name: Build TWRP
